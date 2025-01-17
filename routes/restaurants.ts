@@ -2,10 +2,10 @@ import { Router, Request, Response, NextFunction } from "express";
 import express from 'express';
 import colors from "colors";
 import { validate } from '../middlewares/validate';
-import { Restaurant, RestaurantSchema } from '../schemas/restaurant';
+import { Restaurant, RestaurantSchema, ReviewSchema, Review } from '../schemas/restaurant';
 import { initializeRedisClient } from '../utils/client';
 import { nanoid } from 'nanoid';
-import { restaurantKeyById } from '../utils/keys';
+import { restaurantKeyById, reviewDetailsKeyById, reviewKeyById } from '../utils/keys';
 import { successResponse } from '../utils/responses';
 import { checkrestaurantExists } from "../middlewares/checkId";
 
@@ -36,6 +36,38 @@ router.post("/", validate(RestaurantSchema), async (req, res, next) => {
         console.log(colors.cyan("Response sent"));
     }
 });
+
+router.post("/:restaurantId/reviews",
+  checkrestaurantExists,
+  validate(ReviewSchema),
+  async (req: Request<{ restaurantId: string }>, res: Response, next: NextFunction): Promise<void> => {
+    console.log(colors.yellow("This is the reviews route"));
+  
+    const { restaurantId } = req.params;
+    const data = req.body as Review;
+  
+    try {
+      const client = await initializeRedisClient();
+      const reviewId = nanoid();
+      const reviewKey = reviewKeyById(reviewId);
+      const reviewDetailsKey = reviewDetailsKeyById(reviewId);
+      const hashData = { id: reviewId, ...data };
+  
+      // Push data to Redis
+      const pushToRedis = await client.hSet(reviewKey, hashData);
+      await client.hSet(reviewDetailsKey, { ...data, restaurantId });
+  
+      console.log(colors.blue(`Data pushed to Redis: ${pushToRedis}`));
+  
+      // Send response using the `res` object
+      console.log(colors.cyan("Response sent"));
+      successResponse(res, hashData, "Added new review to Redis");
+    } catch (error) {
+      console.error(error);
+      next(error); // Forward the error to the global error handler
+    }
+  }
+) 
 
 router.get("/:restaurantId", 
     // checkrestaurantExists,
